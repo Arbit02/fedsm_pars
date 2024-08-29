@@ -46,7 +46,6 @@ function Work_With_File_Persons($data)
         // Очистка и разбиение строки
         $item = trim($item, " \t\n\r\0\x0B;");
 
-        // Разбиваем строку на колонки с использованием регулярных выражений
         preg_match('/(\d+)\.\s+(.*?)\s*,\s*(\d{2}\.\d{2}\.\d{4})?\s*г\.р\.\s*,\s*(.*)/u', $item, $match);
         if (!$match) {
             preg_match('/(\d+)\.\s+(.*?)\,\s*(\d{2}\.\d{2}\.\d{4})?\s*г\.р\.\s*,\s*(.*)/u', $item, $match);
@@ -78,7 +77,6 @@ function Work_With_File_Persons($data)
                 $last_name2 = $first_name2 = $middle_name2 = '';
             }
 
-            // Добавляем данные в массив строк
             $rows[] = [
                 $number,
                 $last_name,
@@ -155,7 +153,6 @@ function parseColumns_Org($item) {
 
     // Ищем наименование до первой запятой и убираем символы '*'
     if (preg_match('/([^,]+),?\s*(?:,\s+ИНН:\s*(\d{10,12}))?(?:,\s+ОГРН:\s*(\d{13}))?;/u', $item, $match)) {
-        // Убираем символы '*'
         $name = str_replace('*', '', trim($match[1]));
         $columns[] = $name;
         $columns[] = $match[2] ?? '';
