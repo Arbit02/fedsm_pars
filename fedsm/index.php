@@ -38,130 +38,132 @@ $text = GetURL('https://www.fedsfm.ru/documents/terrorists-catalog-portal-act');
 function Work_With_File_Persons($data)
 {
     // Определяем строки в HTML
-    preg_match_all('/<li>(.*?)<\/li>/u', $data, $matches);
+    preg_match_all('/<li>(.*?)<\/li>/us', $data, $matches);
 
     $rows = [];
 
     foreach ($matches[1] as $item) {
-        // Очистка и разбиение строки
+        // Очистка строки
         $item = trim($item, " \t\n\r\0\x0B;");
 
-        preg_match('/(\d+)\.\s+(.*?)\s*,\s*(\d{2}\.\d{2}\.\d{4})?\s*г\.р\.\s*,\s*(.*)/u', $item, $match);
-        if (!$match) {
-            preg_match('/(\d+)\.\s+(.*?)\,\s*(\d{2}\.\d{2}\.\d{4})?\s*г\.р\.\s*,\s*(.*)/u', $item, $match);
+        // Ищем второе ФИО в скобках
+        $second_full_name = '';
+        if (preg_match('/\(([^)]+)\)/', $item, $second_match)) {
+            $second_full_name = $second_match[1];
+            $item = str_replace($second_match[0], '', $item); // Удаляем второе ФИО из строки
         }
 
-        if ($match) {
-            // Извлекаем данные из совпадений
-            $number = $match[1];  // Номер
-            $full_name = $match[2];  // Полное имя
-            $date_of_birth = $match[3] ?? '';  // Дата рождения
-            $address = rtrim(trim($match[4]), ';');  // Убираем ; с конца адреса
+        // Разбиваем строку на части
+        $parts = preg_split('/,\s*/', $item);
 
-            // Разбиваем ФИО на части
-            $name_parts = preg_split('/\s+/', $full_name);
-            $last_name = $name_parts[0] ?? '';
-            $first_name = $name_parts[1] ?? '';
-            $middle_name = str_replace(['*', ','], '', ($name_parts[2] ?? ''));  // Убираем * и , из отчества
+        // Извлекаем номер и полное имя
+        if (preg_match('/(\d+)\.\s+(.+)/u', $parts[0], $name_match)) {
+            $number = $name_match[1];
+            $full_name = $name_match[2];
+        } else {
+            continue;
+        }
 
-            // Проверяем наличие второго ФИО в скобках
-            preg_match('/\((.*?)\)/u', $full_name, $bracket_match);
-            if ($bracket_match) {
-                // Разбиваем второе ФИО на части
-                $second_full_name = trim($bracket_match[1]);
-                $second_name_parts = preg_split('/\s+/', $second_full_name);
-                $last_name2 = $second_name_parts[0] ?? '';
-                $first_name2 = $second_name_parts[1] ?? '';
-                $middle_name2 = str_replace(['*', ','], '', ($second_name_parts[2] ?? ''));  // Убираем * и , из отчества
-            } else {
-                $last_name2 = $first_name2 = $middle_name2 = '';
+        // Разбиваем полное ФИО на части
+        $name_parts = preg_split('/\s+/', trim($full_name));
+        $last_name = $name_parts[0] ?? '';
+        $first_name = $name_parts[1] ?? '';
+        $middle_name = str_replace(['*', ','], '', ($name_parts[2] ?? ''));
+
+        // Аналогично :/
+        $last_name2 = $first_name2 = $middle_name2 = '';
+        if ($second_full_name) {
+            $second_name_parts = preg_split('/\s+/', trim($second_full_name));
+            $last_name2 = str_replace(';', '', $second_name_parts[0] ?? '');
+            $first_name2 = str_replace(';', '', $second_name_parts[1] ?? '');
+            $middle_name2 = str_replace(['*', ',', ';'], '', ($second_name_parts[2] ?? ''));
+        }
+
+        // Удаляем номер и полное имя из частей
+        unset($parts[0]);
+
+        // Берем дату рождения, если есть :)
+        $date_of_birth = '';
+        foreach ($parts as $key => $part) {
+            if (preg_match('/\d{2}\.\d{2}\.\d{4}/', $part, $date_match)) {
+                $date_of_birth = $date_match[0];
+                unset($parts[$key]); // Удаляем дату из частей
+                break;
             }
-
-            $rows[] = [
-                $number,
-                $last_name,
-                $first_name,
-                $middle_name,
-                $last_name2,
-                $first_name2,
-                $middle_name2,
-                $date_of_birth,
-                $address
-            ];
         }
+
+        // Извлекаем адрес и убираем запятую
+        $address = implode(' ', $parts);
+        
+        $rows[] = [
+            $number,
+            $last_name,
+            $first_name,
+            $middle_name,
+            $last_name2,
+            $first_name2,
+            $middle_name2,
+            $date_of_birth,
+            $address
+        ];
     }
-
-    // Сохраняем данные в CSV
+    
     $fp = fopen(__DIR__ . '/files/individuals.csv', "w");
-
-    // Записываем BOM для корректного отображения UTF-8
+    
     fwrite($fp, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
     // Записываем заголовки
     fputcsv($fp, ['Номер', 'Фамилия', 'Имя', 'Отчество', 'Фамилия2', 'Имя2', 'Отчество2', 'Дата рождения', 'Адрес']);
-
-    // Записываем строки данных
+    
     foreach ($rows as $row) {
         fputcsv($fp, $row);
     }
 
     fclose($fp);
 }
+
 function Work_With_File_Organizations($data) {
-    // Определяем строки в HTML
-    preg_match_all('/<li>(.*?)<\/li>/u', $data, $matches);
-
-    $rows = [];
-
-    foreach ($matches[1] as $item) {
-        // Определяем строку по колонкам
-        $columns = parseColumns_Org($item);
-
-        if ($columns) {
-            $rows[] = $columns;
-        }
-    }
-
-    // Сохраняем данные в CSV
+    preg_match_all('/<li>(.*?)<\/li>/us', $data, $matches);
     $fp = fopen(__DIR__ . '/files/organizations.csv', "w");
 
-    // Записываем BOM для корректного отображения UTF-8
+    
     fwrite($fp, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
-    // Записываем заголовки
+    
     fputcsv($fp, ['Номер', 'Наименование', 'ИНН', 'ОГРН']);
 
-    // Записываем строки данных
-    foreach ($rows as $row) {
-        fputcsv($fp, $row);
+    foreach ($matches[1] as $item) {
+        // Удаляем всё-всё лишнее из строки
+        $item = rtrim($item, ',;* ');
+
+        
+        $parts = preg_split('/,\s*/', $item);
+        
+        if (preg_match('/^(\d+)\.\s*(.+)/u', $parts[0], $match)) {
+            $number = $match[1];
+            $name = $match[2];
+        } else {
+            continue; 
+        }
+
+        
+        $inn = '';
+        $ogrn = '';
+
+        // Проверяем наличие ИНН и ОГРН
+        foreach ($parts as $part) {
+            if (strpos($part, 'ИНН:') !== false) {
+                $inn = trim(str_replace('ИНН:', '', $part));
+            }
+            if (strpos($part, 'ОГРН:') !== false) {
+                $ogrn = trim(str_replace('ОГРН:', '', $part));
+            }
+        }
+        
+        fputcsv($fp, [$number, $name, $inn, $ogrn]);
     }
 
     fclose($fp);
-}
-
-function parseColumns_Org($item) {
-    // Разделяем строку на части
-    $columns = [];
-
-    // Ищем номер
-    if (preg_match('/(\d+)\.\s+/', $item, $match)) {
-        $columns[] = $match[1];
-        $item = str_replace($match[0], '', $item);
-    } else {
-        return false;
-    }
-
-    // Ищем наименование до первой запятой и убираем символы '*'
-    if (preg_match('/([^,]+),?\s*(?:,\s+ИНН:\s*(\d{10,12}))?(?:,\s+ОГРН:\s*(\d{13}))?;/u', $item, $match)) {
-        $name = str_replace('*', '', trim($match[1]));
-        $columns[] = $name;
-        $columns[] = $match[2] ?? '';
-        $columns[] = $match[3] ?? '';
-    } else {
-        return false;
-    }
-
-    return $columns;
 }
 
 Work_With_File_Organizations(Get_Content_Organization($text)[0]);
